@@ -2,7 +2,7 @@
   "name": "starling-cable",
   "version": "0.1.0",
   "private": true,
-  "description": "Node.js launcher for a macOS virtual audio cable",
+  "description": "Node.js launcher for a virtual audio cable on macOS and Linux",
   "type": "module",
   "scripts": {
     "cable": "node scripts/cable.js start",
