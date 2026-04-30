@@ -1,0 +1,19 @@
+{
+  "name": "starling-cable",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js launcher for a macOS virtual audio cable",
+  "type": "module",
+  "scripts": {
+    "cable": "node scripts/cable.js start",
+    "start": "node scripts/cable.js start",
+    "stop": "node scripts/cable.js stop",
+    "status": "node scripts/cable.js status",
+    "install": "node scripts/cable.js install",
+    "repair": "node scripts/cable.js repair",
+    "uninstall": "node scripts/cable.js uninstall"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
