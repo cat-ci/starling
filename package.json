@@ -9,6 +9,9 @@
     "start": "node scripts/cable.js start",
     "stop": "node scripts/cable.js stop",
     "status": "node scripts/cable.js status",
+    "connect": "node scripts/cable.js connect",
+    "disconnect": "node scripts/cable.js disconnect",
+    "forward-status": "node scripts/cable.js forward-status",
     "install": "node scripts/cable.js install",
     "repair": "node scripts/cable.js repair",
     "uninstall": "node scripts/cable.js uninstall"

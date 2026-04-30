@@ -1,14 +1,22 @@
 #!/usr/bin/env node
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DEVICE_MATCH = process.env.STARLING_DEVICE_MATCH ?? "BlackHole";
 const CABLE_DISPLAY_NAME = process.env.STARLING_CABLE_NAME ?? "Starling Cable";
 const DRIVER_BUNDLE_NAME = process.env.STARLING_DRIVER_BUNDLE ?? "BlackHole2ch.driver";
+const FORWARD_PORT = Number(process.env.STARLING_FORWARD_PORT ?? "4010");
 const STATE_DIR = path.join(os.homedir(), ".starling-cable");
 const STATE_FILE = path.join(STATE_DIR, "state-macos.json");
+const FORWARD_STATE_FILE = path.join(STATE_DIR, "forward-macos.json");
+const FORWARD_LOG_FILE = path.join(STATE_DIR, "forward-macos.log");
+const FORWARD_SCRIPT = path.join(__dirname, "audio-forwarder.js");
 
 function run(command, { quiet = false } = {}) {
   if (!quiet) {
@@ -66,6 +74,18 @@ function ensureDependencies() {
   ensurePackageInstalled("switchaudio-osx", { cask: false });
 }
 
+function ensureForwardingDependencies() {
+  ensureDependencies();
+
+  if (!commandExists("ffmpeg") || !commandExists("ffplay")) {
+    ensurePackageInstalled("ffmpeg", { cask: false });
+  }
+
+  if (!commandExists("ffmpeg") || !commandExists("ffplay")) {
+    throw new Error("ffmpeg and ffplay are required for forwarding but were not found after installation.");
+  }
+}
+
 function getAudioSources(type) {
   const output = run(`SwitchAudioSource -a -t ${type}`, { quiet: true });
   return output
@@ -98,6 +118,38 @@ function readState() {
 function deleteState() {
   if (existsSync(STATE_FILE)) {
     rmSync(STATE_FILE);
+  }
+}
+
+function saveForwardState(data) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(FORWARD_STATE_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+function readForwardState() {
+  if (!existsSync(FORWARD_STATE_FILE)) {
+    return null;
+  }
+
+  return JSON.parse(readFileSync(FORWARD_STATE_FILE, "utf8"));
+}
+
+function deleteForwardState() {
+  if (existsSync(FORWARD_STATE_FILE)) {
+    rmSync(FORWARD_STATE_FILE);
+  }
+}
+
+function isProcessRunning(pid) {
+  if (!pid) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -190,7 +242,98 @@ function start() {
   console.log("Use npm run stop to restore previous devices.");
 }
 
+function disconnectForwarding({ quiet = false } = {}) {
+  const state = readForwardState();
+
+  if (!state) {
+    if (!quiet) {
+      console.log("No forwarding session is running.");
+    }
+    return;
+  }
+
+  try {
+    if (state.pid) {
+      process.kill(state.pid, "SIGTERM");
+    }
+  } catch (error) {
+    if (error.code !== "ESRCH") {
+      throw error;
+    }
+  } finally {
+    deleteForwardState();
+  }
+
+  if (!quiet) {
+    console.log("Forwarding stopped.");
+  }
+}
+
+function connect(peerHost) {
+  if (!peerHost) {
+    throw new Error("Usage: npm run connect -- <peer-ip>");
+  }
+
+  ensureForwardingDependencies();
+  const devices = ensureVirtualCableReady();
+  disconnectForwarding({ quiet: true });
+
+  mkdirSync(STATE_DIR, { recursive: true });
+  const logFd = openSync(FORWARD_LOG_FILE, "a");
+  const child = spawn(
+    process.execPath,
+    [
+      FORWARD_SCRIPT,
+      "run",
+      "--platform",
+      "darwin",
+      "--capture-device",
+      devices.inputName,
+      "--peer-host",
+      peerHost,
+      "--peer-port",
+      String(FORWARD_PORT),
+      "--listen-port",
+      String(FORWARD_PORT)
+    ],
+    {
+      detached: true,
+      stdio: ["ignore", logFd, logFd]
+    }
+  );
+
+  child.unref();
+
+  saveForwardState({
+    pid: child.pid,
+    peerHost,
+    port: FORWARD_PORT,
+    captureDevice: devices.inputName,
+    logFile: FORWARD_LOG_FILE,
+    startedAt: new Date().toISOString()
+  });
+
+  console.log(`Forwarding started with peer ${peerHost}:${FORWARD_PORT}.`);
+  console.log("Remote audio will play on this Mac's current default output.");
+}
+
+function forwardStatus() {
+  const state = readForwardState();
+  console.log("Starling forwarding status");
+
+  if (!state) {
+    console.log("Session: not running");
+    return;
+  }
+
+  console.log(`Session: ${isProcessRunning(state.pid) ? "running" : "stopped"}`);
+  console.log(`Peer   : ${state.peerHost}:${state.port}`);
+  console.log(`Capture: ${state.captureDevice}`);
+  console.log(`Log    : ${state.logFile}`);
+}
+
 function stop() {
+  disconnectForwarding({ quiet: true });
   const state = readState();
 
   if (!state) {
@@ -242,6 +385,7 @@ function status() {
 }
 
 function uninstall() {
+  disconnectForwarding({ quiet: true });
   ensureBrew();
 
   try {
@@ -269,13 +413,16 @@ function main() {
     start,
     stop,
     status,
+    connect: () => connect(process.argv[3]),
+    disconnect: () => disconnectForwarding(),
+    "forward-status": () => forwardStatus(),
     repair,
     uninstall
   };
 
   if (!actions[command]) {
     console.error(`Unknown command: ${command}`);
-    console.error("Usage: node scripts/mac-audio.js [install|start|stop|status|repair|uninstall]");
+    console.error("Usage: node scripts/mac-audio.js [install|start|stop|status|connect|disconnect|forward-status|repair|uninstall]");
     process.exit(1);
   }
 

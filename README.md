@@ -6,6 +6,7 @@ Starling Cable provides a VB-Cable style workflow on macOS and Linux:
 - On Linux, a virtual sink/source pair is created with `pactl` (PulseAudio/PipeWire).
 - Node.js commands switch system audio defaults and restore previous values.
 - One command starts routing apps to the virtual cable.
+- Devices can connect peer-to-peer by IP and forward audio to each other.
 
 ## Why this approach
 
@@ -16,9 +17,11 @@ Building a production-grade CoreAudio virtual driver from scratch is possible, b
 - macOS:
   - Node.js 18+
   - Homebrew
+  - `ffmpeg` with `ffplay` for network forwarding (auto-installed by `npm run connect`)
 - Linux:
   - Node.js 18+
   - `pactl` available (PulseAudio/PipeWire tools)
+  - `ffmpeg` with `ffplay` for network forwarding
 
 ## Custom name and device match
 
@@ -42,6 +45,8 @@ STARLING_CABLE_NAME="Studio Cable" npm start
 STARLING_CABLE_NAME="Studio Cable" STARLING_DEVICE_MATCH="Studio Cable" npm start
 
 STARLING_CABLE_NAME="Studio Cable" STARLING_SINK_NAME="studio_sink" STARLING_SOURCE_NAME="studio_source" npm start
+
+STARLING_FORWARD_PORT="4010" npm run connect -- 192.168.1.42
 
 ## Quick start
 
@@ -71,9 +76,34 @@ STARLING_CABLE_NAME="Studio Cable" STARLING_SINK_NAME="studio_sink" STARLING_SOU
   - Restores previous input/output devices from saved state.
 - npm run status
   - Prints current devices and Starling virtual device detection state.
+- npm run connect -- <peer-ip>
+  - Starts a two-way forwarding session to another device running the same command.
+- npm run disconnect
+  - Stops the forwarding session.
+- npm run forward-status
+  - Shows forwarding process status, peer IP, and log file path.
 - npm run uninstall
   - macOS: uninstalls BlackHole and SwitchAudioSource.
   - Linux: unloads Starling sink/source modules.
+
+## Peer forwarding
+
+Run this on both devices, replacing the IP with the other device's reachable address:
+
+1. npm start
+2. npm run connect -- 192.168.x.x
+
+What it does:
+
+- Captures audio from the Starling virtual input/source.
+- Streams it to the peer over TCP.
+- Plays received peer audio on the local default speaker output.
+
+Current behavior:
+
+- This is point-to-point: one peer per device.
+- If a device already plays its own local audio through speakers, you will hear both local audio and remote forwarded audio there.
+- If local output is still set to the virtual cable, only the received peer audio is guaranteed to be audible locally.
 
 ## Notes
 
