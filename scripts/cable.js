@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import os from "node:os";
 import path from "node:path";
 
-const BLACKHOLE_NAME = "BlackHole 2ch";
+const DEVICE_MATCH = process.env.STARLING_DEVICE_MATCH ?? "BlackHole";
+const CABLE_DISPLAY_NAME = process.env.STARLING_CABLE_NAME ?? "Starling Cable";
+const DRIVER_BUNDLE_NAME = process.env.STARLING_DRIVER_BUNDLE ?? "BlackHole2ch.driver";
 const STATE_DIR = path.join(os.homedir(), ".starling-cable");
 const STATE_FILE = path.join(STATE_DIR, "state.json");
 
@@ -99,18 +101,18 @@ function deleteState() {
   }
 }
 
-function findBlackHoleName() {
+function findVirtualCableName() {
   const inputs = getAudioSources("input");
   const outputs = getAudioSources("output");
 
-  const inputMatch = inputs.find((n) => n.includes("BlackHole"));
-  const outputMatch = outputs.find((n) => n.includes("BlackHole"));
+  const inputMatch = inputs.find((n) => n.includes(DEVICE_MATCH));
+  const outputMatch = outputs.find((n) => n.includes(DEVICE_MATCH));
 
   if (!inputMatch || !outputMatch) {
     const allDevicesJson = run("SwitchAudioSource -a -t all -f json", { quiet: true });
     throw new Error(
       [
-        "BlackHole audio devices were not found.",
+        `Virtual cable devices matching \"${DEVICE_MATCH}\" were not found.`,
         "If you already logged out/in, run: npm run repair",
         "Detected devices:",
         allDevicesJson || "(none)"
@@ -133,19 +135,19 @@ function repair() {
 
   // Remove stale filesystem attributes that can prevent CoreAudio from loading HAL plugins.
   runPrivileged(
-    "xattr -dr com.dropbox.attrs /Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver || true",
-    "Starling Cable needs admin access to repair BlackHole audio driver loading."
+    `xattr -dr com.dropbox.attrs /Library/Audio/Plug-Ins/HAL/${DRIVER_BUNDLE_NAME} || true`,
+    `${CABLE_DISPLAY_NAME} needs admin access to repair virtual audio driver loading.`
   );
   runPrivileged(
-    "xattr -dr com.apple.provenance /Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver || true",
-    "Starling Cable needs admin access to repair BlackHole audio driver loading."
+    `xattr -dr com.apple.provenance /Library/Audio/Plug-Ins/HAL/${DRIVER_BUNDLE_NAME} || true`,
+    `${CABLE_DISPLAY_NAME} needs admin access to repair virtual audio driver loading.`
   );
   runPrivileged(
     "killall coreaudiod",
-    "Starling Cable needs admin access to reload macOS audio services."
+    `${CABLE_DISPLAY_NAME} needs admin access to reload macOS audio services.`
   );
 
-  const devices = findBlackHoleName();
+  const devices = findVirtualCableName();
   console.log("Repair complete.");
   console.log(`Detected input: ${devices.inputName}`);
   console.log(`Detected output: ${devices.outputName}`);
@@ -155,17 +157,17 @@ function ensureVirtualCableReady() {
   ensureDependencies();
 
   try {
-    return findBlackHoleName();
+    return findVirtualCableName();
   } catch (firstError) {
-    console.log("BlackHole was not detected. Running automatic repair...");
+    console.log(`No virtual cable matching \"${DEVICE_MATCH}\" was detected. Running automatic repair...`);
     repair();
-    return findBlackHoleName();
+    return findVirtualCableName();
   }
 }
 
 function install() {
   const devices = ensureVirtualCableReady();
-  console.log(`Virtual cable ready with device: ${BLACKHOLE_NAME}`);
+  console.log(`Virtual cable ready for ${CABLE_DISPLAY_NAME}.`);
   console.log(`Detected input: ${devices.inputName}`);
   console.log(`Detected output: ${devices.outputName}`);
 }
@@ -225,11 +227,11 @@ function status() {
   console.log(`Current output: ${currentOutput}`);
 
   try {
-    const { inputName, outputName } = findBlackHoleName();
-    console.log(`BlackHole input : ${inputName}`);
-    console.log(`BlackHole output: ${outputName}`);
+    const { inputName, outputName } = findVirtualCableName();
+    console.log(`${CABLE_DISPLAY_NAME} input : ${inputName}`);
+    console.log(`${CABLE_DISPLAY_NAME} output: ${outputName}`);
   } catch (error) {
-    console.log(`BlackHole not detected: ${error.message}`);
+    console.log(`${CABLE_DISPLAY_NAME} not detected: ${error.message}`);
   }
 
   if (existsSync(STATE_FILE)) {

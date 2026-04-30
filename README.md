@@ -17,6 +17,23 @@ Building a production-grade CoreAudio virtual driver from scratch is possible, b
 - Node.js 18+
 - Homebrew
 
+## Custom name and device match
+
+You can customize how the tool labels your cable and what device name it looks for.
+
+- STARLING_CABLE_NAME
+  - Friendly label used in output messages and admin popup text.
+- STARLING_DEVICE_MATCH
+  - Substring used to detect input/output device names (default: BlackHole).
+- STARLING_DRIVER_BUNDLE
+  - HAL driver bundle name used for repair (default: BlackHole2ch.driver).
+
+Examples:
+
+STARLING_CABLE_NAME="Studio Cable" npm start
+
+STARLING_CABLE_NAME="Studio Cable" STARLING_DEVICE_MATCH="Studio Cable" npm start
+
 ## Quick start
 
 1. Install dependencies and activate the virtual cable:
@@ -38,7 +55,7 @@ Building a production-grade CoreAudio virtual driver from scratch is possible, b
 - npm run repair
   - Reinstalls dependencies if needed, clears problematic plugin attributes, and reloads CoreAudio using Apple admin popup.
 - npm run start
-  - Full automatic flow: detect/install/repair as needed, then save current devices and switch to BlackHole.
+  - Full automatic flow: detect/install/repair as needed, then save current devices and switch to your configured virtual cable device.
 - npm run stop
   - Restores previous input/output devices from saved state.
 - npm run status
